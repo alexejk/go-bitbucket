@@ -324,15 +324,31 @@ func (c *Client) doRequest(req *http.Request, emptyResponse bool) (interface{}, 
 			if len(responsePaginated.Next) == 0 {
 				break
 			}
-			newReq, err := http.NewRequest(req.Method, responsePaginated.Next, nil)
+
+			uri, _ := url.Parse(responsePaginated.Next)
+			newReq := req.Clone(context.Background())
+			newReq.URL = uri
 			if err != nil {
 				return resBody, err
 			}
-			resp, err := c.doRawRequest(newReq, false)
+
+			resp, err := c.doRawRequest(newReq, emptyResponse)
 			if err != nil {
 				return resBody, err
 			}
-			json.NewDecoder(resp).Decode(responsePaginated)
+
+			rpb, err := ioutil.ReadAll(resp)
+			resp.Close()
+
+			rp := &Response{}
+			if err := json.Unmarshal(rpb, rp); err != nil {
+				responsePaginated.Values = nil
+				responsePaginated.Next = ""
+			} else {
+				responsePaginated.Values = rp.Values
+				responsePaginated.Next = rp.Next
+			}
+
 		}
 		responsePaginated.Values = values
 		responseBytes, err = json.Marshal(responsePaginated)
